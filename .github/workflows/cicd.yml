@@ -43,9 +43,8 @@ jobs:
       - name: Run tests with coverage
         run: uv run pytest -v --cov=src --cov-report=term-missing --cov-report=xml tests/
 
-      - name: Upload coverage to Codecov
+      - name: Upload coverage reports to Codecov
         if: matrix.python-version == '3.14'
         uses: codecov/codecov-action@v5
         with:
-          files: coverage.xml
-          use_oidc: true
+          token: ${{ secrets.CODECOV_TOKEN }}
