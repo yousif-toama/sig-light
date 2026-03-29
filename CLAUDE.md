@@ -16,7 +16,7 @@ uv run pytest
 # Code quality — run all three before committing
 uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
-uv run ty check src/
+uv run ty check
 ```
 
 ## Architecture
@@ -47,7 +47,7 @@ src/sig_light/
 ## Dependencies
 
 - numpy >= 2.0 (core computation)
-- Dev: ruff, ty, pytest
+- Dev: ruff, ty, pytest, pytest-cov
 
 ## API Compatibility
 

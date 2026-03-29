@@ -168,7 +168,7 @@ sig-light implements the core signature and log signature functions with an API 
 
 ```bash
 # Clone and install
-git clone https://github.com/yourusername/sig-light.git
+git clone https://github.com/yousif-toama/sig-light.git
 cd sig-light
 uv sync
 
@@ -178,7 +178,7 @@ uv run pytest
 # Code quality
 uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
-uv run ty check src/
+uv run ty check
 ```
 
 ## License
