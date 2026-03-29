@@ -12,8 +12,8 @@ import numpy as np
 from numpy.typing import NDArray
 
 from sig_light.algebra import (
-    sig_of_segment,
-    sig_of_segment_adjoint,
+    sig_of_segment_adjoint_batch,
+    sig_of_segment_batch,
     split_signature,
     tensor_log_adjoint,
     tensor_multiply,
@@ -63,34 +63,53 @@ def sigbackprop(
         return np.zeros_like(path)
 
     displacements = np.diff(path, axis=0)  # (n-1, d)
-    num_segs = n - 1
+    return _sigbackprop_core(deriv, displacements, d, m)
 
-    # Forward: compute all segment signatures
-    seg_sigs = [sig_of_segment(displacements[i], m) for i in range(num_segs)]
 
-    # Forward fold: acc[0] = seg[0], acc[i] = tensor_multiply(acc[i-1], seg[i])
+def _sigbackprop_core(
+    deriv: NDArray[np.float64],
+    displacements: NDArray[np.float64],
+    d: int,
+    m: int,
+) -> NDArray[np.float64]:
+    """Core sigbackprop logic operating on displacements.
+
+    Args:
+        deriv: Flat gradient of shape (siglength(d, m),).
+        displacements: Array of shape (num_segs, d).
+        d: Path dimension.
+        m: Truncation depth.
+
+    Returns:
+        Gradient w.r.t. path, shape (num_segs + 1, d).
+    """
+    num_segs = displacements.shape[0]
+
+    # Batch compute all segment signatures at once
+    seg_batch = sig_of_segment_batch(displacements, m)
+    # Convert to list-of-level-lists for the fold
+    seg_sigs = [[seg_batch[k][i] for k in range(m)] for i in range(num_segs)]
+
+    # Sequential forward fold (must store intermediates for backprop)
     acc = [seg_sigs[0]]
     for i in range(1, num_segs):
         acc.append(tensor_multiply(acc[-1], seg_sigs[i]))
 
     # Backward through the fold
-    dlevels = split_signature(np.asarray(deriv, dtype=np.float64), d, m)
+    dlevels = split_signature(deriv, d, m)
     dseg = _backprop_fold(dlevels, acc, seg_sigs)
 
-    # Convert segment-level gradients to displacement gradients
-    dh = np.zeros((num_segs, d))
-    for i in range(num_segs):
-        dh[i] = sig_of_segment_adjoint(dseg[i], displacements[i], m)
+    # Batched: convert segment gradients to displacement gradients
+    # Stack dseg into batched level-lists
+    dseg_batch = [np.stack([dseg[i][k] for i in range(num_segs)]) for k in range(m)]
+    dh = sig_of_segment_adjoint_batch(dseg_batch, displacements, m)
 
-    # Convert displacement gradients to path gradients
-    # displacement[i] = path[i+1] - path[i]
-    # dpath[j] = sum_i dh[i] * d(displacement[i])/d(path[j])
-    # d(displacement[i])/d(path[i]) = -I, d(displacement[i])/d(path[i+1]) = +I
-    dpath = np.zeros_like(path)
-    dpath[0] = -dh[0]
-    for i in range(1, num_segs):
-        dpath[i] = dh[i - 1] - dh[i]
-    dpath[n - 1] = dh[num_segs - 1]
+    # Vectorized: convert displacement gradients to path gradients
+    # dpath[0] = -dh[0], dpath[i] = dh[i-1] - dh[i], dpath[-1] = dh[-1]
+    n = num_segs + 1
+    dpath = np.zeros((n, d))
+    dpath[:-1] -= dh
+    dpath[1:] += dh
 
     return dpath
 
@@ -205,22 +224,21 @@ def logsigbackprop(
     if n < 2:
         return np.zeros_like(path)
 
-    # Step 1: Unproject from Lyndon basis back to full tensor levels.
-    # Forward: for each level k, coords[k] = proj_matrix[k] @ log_levels[k]
-    # Backward: dlog[k] = proj_matrix[k].T @ dcoords[k]
+    # Step 1: Unproject from Lyndon basis to full tensor levels
     deriv = np.asarray(deriv, dtype=np.float64)
     dlog_levels = _unproject_lyndon(deriv, s)
 
-    # Step 2: Backprop through tensor_log.
-    # Forward: log_levels = tensor_log(sig_levels)
+    # Step 2: Backprop through tensor_log
     sig_levs = sig_levels(path, m)
     dsig_levels = tensor_log_adjoint(dlog_levels, sig_levs)
 
-    # Step 3: Backprop through the signature computation (same fold logic).
-    displacements = np.diff(path, axis=0)  # (n-1, d)
+    # Step 3: Backprop through sig computation (reuse core logic)
+    displacements = np.diff(path, axis=0)
     num_segs = n - 1
 
-    seg_sigs = [sig_of_segment(displacements[i], m) for i in range(num_segs)]
+    # Batch compute segment signatures
+    seg_batch = sig_of_segment_batch(displacements, m)
+    seg_sigs = [[seg_batch[k][i] for k in range(m)] for i in range(num_segs)]
 
     acc = [seg_sigs[0]]
     for i in range(1, num_segs):
@@ -228,15 +246,14 @@ def logsigbackprop(
 
     dseg = _backprop_fold(dsig_levels, acc, seg_sigs)
 
-    dh = np.zeros((num_segs, d))
-    for i in range(num_segs):
-        dh[i] = sig_of_segment_adjoint(dseg[i], displacements[i], m)
+    # Batched adjoint
+    dseg_batch = [np.stack([dseg[i][k] for i in range(num_segs)]) for k in range(m)]
+    dh = sig_of_segment_adjoint_batch(dseg_batch, displacements, m)
 
+    # Vectorized path gradient
     dpath = np.zeros_like(path)
-    dpath[0] = -dh[0]
-    for i in range(1, num_segs):
-        dpath[i] = dh[i - 1] - dh[i]
-    dpath[n - 1] = dh[num_segs - 1]
+    dpath[:-1] -= dh
+    dpath[1:] += dh
 
     return dpath
 
