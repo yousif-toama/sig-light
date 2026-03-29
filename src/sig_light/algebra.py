@@ -32,7 +32,10 @@ def tensor_multiply(
         Level-list of the product (implicit 1 at level 0).
     """
     m = len(a)
-    result = [np.copy(a[k]) + b[k] for k in range(m)]
+    result = [a[k] + b[k] for k in range(m)]
+
+    if m >= 2:
+        buf = np.empty(len(result[-1]))
 
     for k in range(m):
         for i in range(k + 1):
@@ -40,7 +43,9 @@ def tensor_multiply(
             if j < 0:
                 # i contributes with implicit 1 from b at level 0
                 continue
-            result[k] += np.outer(a[i], b[j]).ravel()
+            si, sj = len(a[i]), len(b[j])
+            np.outer(a[i], b[j], out=buf[: si * sj].reshape(si, sj))
+            result[k] += buf[: si * sj]
 
     return result
 
@@ -66,12 +71,17 @@ def tensor_multiply_nil(
     m = len(a)
     result = [np.zeros_like(a[k]) for k in range(m)]
 
+    if m >= 2:
+        buf = np.empty(len(a[-1]))
+
     for k in range(m):
         for i in range(k + 1):
             j = k - 1 - i
             if j < 0:
                 continue
-            result[k] += np.outer(a[i], b[j]).ravel()
+            si, sj = len(a[i]), len(b[j])
+            np.outer(a[i], b[j], out=buf[: si * sj].reshape(si, sj))
+            result[k] += buf[: si * sj]
 
     return result
 
@@ -128,7 +138,9 @@ def sig_of_segment(
     levels: list[NDArray[np.float64]] = [displacement.copy()]
     for k in range(2, m + 1):
         prev = levels[-1]
-        levels.append(np.outer(prev, displacement).ravel() / k)
+        new_level = np.outer(prev, displacement).ravel()
+        new_level /= k
+        levels.append(new_level)
     return levels
 
 
@@ -191,7 +203,9 @@ def sig_of_segment_batch(
     for k in range(2, m + 1):
         prev = levels[-1]
         new_level = np.einsum("ni,nj->nij", prev, displacements)
-        levels.append(new_level.reshape(prev.shape[0], -1) / k)
+        reshaped = new_level.reshape(prev.shape[0], -1)
+        reshaped /= k
+        levels.append(reshaped)
     return levels
 
 
@@ -223,7 +237,9 @@ def sig_of_segment_adjoint_batch(
     for k in range(2, m + 1):
         prev = levels[-1]
         new_level = np.einsum("ni,nj->nij", prev, h)
-        levels.append(new_level.reshape(n, -1) / k)
+        reshaped = new_level.reshape(n, -1)
+        reshaped /= k
+        levels.append(reshaped)
 
     # Initialize dlevel from dresults
     dlevel = [dresults[k].copy() for k in range(m)]
@@ -273,6 +289,10 @@ def tensor_multiply_adjoint(
     da = [np.copy(dresult[k]) for k in range(m)]
     db = [np.copy(dresult[k]) for k in range(m)]
 
+    if m >= 2:
+        buf_da = np.empty(len(a[-1]))
+        buf_db = np.empty(len(b[-1]))
+
     for k in range(m):
         for i in range(k + 1):
             j = k - 1 - i
@@ -281,8 +301,10 @@ def tensor_multiply_adjoint(
             size_i = len(a[i])
             size_j = len(b[j])
             dr = dresult[k].reshape(size_i, size_j)
-            da[i] += dr @ b[j]
-            db[j] += a[i] @ dr
+            np.matmul(dr, b[j], out=buf_da[:size_i])
+            da[i] += buf_da[:size_i]
+            np.matmul(a[i], dr, out=buf_db[:size_j])
+            db[j] += buf_db[:size_j]
 
     return da, db
 
@@ -311,7 +333,9 @@ def sig_of_segment_adjoint(
     # Recompute forward levels
     levels: list[NDArray[np.float64]] = [h.copy()]
     for k in range(2, m + 1):
-        levels.append(np.outer(levels[-1], h).ravel() / k)
+        new_level = np.outer(levels[-1], h).ravel()
+        new_level /= k
+        levels.append(new_level)
 
     # Initialize dlevel from dresult
     dlevel = [np.copy(dresult[k]) for k in range(m)]
@@ -397,6 +421,10 @@ def _tensor_multiply_nil_adjoint(
     da = [np.zeros_like(a[k]) for k in range(m)]
     db = [np.zeros_like(b[k]) for k in range(m)]
 
+    if m >= 2:
+        buf_da = np.empty(len(a[-1]))
+        buf_db = np.empty(len(b[-1]))
+
     for k in range(m):
         for i in range(k + 1):
             j = k - 1 - i
@@ -405,8 +433,10 @@ def _tensor_multiply_nil_adjoint(
             size_i = len(a[i])
             size_j = len(b[j])
             dr = dresult[k].reshape(size_i, size_j)
-            da[i] += dr @ b[j]
-            db[j] += a[i] @ dr
+            np.matmul(dr, b[j], out=buf_da[:size_i])
+            da[i] += buf_da[:size_i]
+            np.matmul(a[i], dr, out=buf_db[:size_j])
+            db[j] += buf_db[:size_j]
 
     return da, db
 
