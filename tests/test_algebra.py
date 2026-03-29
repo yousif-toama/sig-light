@@ -235,3 +235,7 @@ class TestBuildProjectionMatrices:
         assert matrices[0].shape == (1, 1)  # level 1: just (0,)
         assert matrices[1].shape == (0, 1)  # level 2: no words
         assert matrices[2].shape == (0, 1)  # level 3: no words
+
+    def test_zero_depth_lyndon(self):
+        """Lyndon words at depth 0 returns empty list."""
+        assert generate_lyndon_words(2, 0) == []

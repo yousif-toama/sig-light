@@ -46,7 +46,7 @@ def _duval_generate(
     while w:
         # Increment last character
         w[-1] += 1
-        if len(w) <= max_length:
+        if len(w) <= max_length:  # pragma: no branch
             # Output if this is a complete Lyndon word
             result.append(tuple(w))
         # Repeat pattern to fill up to max_length

@@ -1,6 +1,6 @@
 [project]
 name = "sig-light"
-version = "0.2.1"
+version = "0.2.2"
 description = "Pure-Python path signature and log signature computation"
 readme = "README.md"
 license = "MIT"

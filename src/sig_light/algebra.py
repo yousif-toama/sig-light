@@ -33,9 +33,7 @@ def tensor_multiply(
     """
     m = len(a)
     result = [a[k] + b[k] for k in range(m)]
-
-    if m >= 2:
-        buf = np.empty(len(result[-1]))
+    buf = np.empty(len(result[-1]))
 
     for k in range(m):
         for i in range(k + 1):
@@ -70,9 +68,7 @@ def tensor_multiply_nil(
     """
     m = len(a)
     result = [np.zeros_like(a[k]) for k in range(m)]
-
-    if m >= 2:
-        buf = np.empty(len(a[-1]))
+    buf = np.empty(len(a[-1]))
 
     for k in range(m):
         for i in range(k + 1):
@@ -288,10 +284,8 @@ def tensor_multiply_adjoint(
     m = len(a)
     da = [np.copy(dresult[k]) for k in range(m)]
     db = [np.copy(dresult[k]) for k in range(m)]
-
-    if m >= 2:
-        buf_da = np.empty(len(a[-1]))
-        buf_db = np.empty(len(b[-1]))
+    buf_da = np.empty(len(a[-1]))
+    buf_db = np.empty(len(b[-1]))
 
     for k in range(m):
         for i in range(k + 1):
@@ -420,10 +414,8 @@ def _tensor_multiply_nil_adjoint(
     m = len(a)
     da = [np.zeros_like(a[k]) for k in range(m)]
     db = [np.zeros_like(b[k]) for k in range(m)]
-
-    if m >= 2:
-        buf_da = np.empty(len(a[-1]))
-        buf_db = np.empty(len(b[-1]))
+    buf_da = np.empty(len(a[-1]))
+    buf_db = np.empty(len(b[-1]))
 
     for k in range(m):
         for i in range(k + 1):
