@@ -198,6 +198,59 @@ def sig_of_segment_batch(
 # --- Adjoint (reverse-mode derivative) operations ---
 
 
+def sig_of_segment_adjoint_batch(
+    dresults: list[NDArray[np.float64]],
+    displacements: NDArray[np.float64],
+    m: int,
+) -> NDArray[np.float64]:
+    """Batched adjoint of sig_of_segment: gradient w.r.t. all displacements.
+
+    Processes all n segments at once using einsum.
+
+    Args:
+        dresults: List of m arrays, each shape (n, d^(k+1)).
+        displacements: Array of shape (n, d).
+        m: Truncation depth.
+
+    Returns:
+        Gradient w.r.t. displacements, shape (n, d).
+    """
+    n, d = displacements.shape
+    h = displacements
+
+    # Recompute forward levels (batched)
+    levels: list[NDArray[np.float64]] = [h.copy()]
+    for k in range(2, m + 1):
+        prev = levels[-1]
+        new_level = np.einsum("ni,nj->nij", prev, h)
+        levels.append(new_level.reshape(n, -1) / k)
+
+    # Initialize dlevel from dresults
+    dlevel = [dresults[k].copy() for k in range(m)]
+
+    # dh accumulates gradient w.r.t. displacement
+    dh = np.zeros_like(h)
+
+    # Backprop through levels in reverse
+    for k in range(m - 1, 0, -1):
+        divisor = k + 1
+        scaled = dlevel[k] / divisor  # (n, d^(k+1))
+        size_prev = d**k
+        mat = scaled.reshape(n, size_prev, d)  # (n, d^k, d)
+
+        # dlevel[k-1] += mat @ h  →  einsum('nij,nj->ni', mat, h)
+        dlevel[k - 1] += np.einsum("nij,nj->ni", mat, h)
+
+        # dh += levels[k-1] @ mat  →  einsum('ni,nij->nj', levels[k-1], mat)
+        prev_reshaped = levels[k - 1]  # (n, d^k)
+        dh += np.einsum("ni,nij->nj", prev_reshaped, mat)
+
+    # levels[0] = h, so dlevel[0] contributes directly
+    dh += dlevel[0]
+
+    return dh
+
+
 def tensor_multiply_adjoint(
     dresult: list[NDArray[np.float64]],
     a: list[NDArray[np.float64]],
