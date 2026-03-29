@@ -175,6 +175,14 @@ uv sync
 # Run tests
 uv run pytest
 
+# Install iisignature for cross-validation testing (requires C++ compiler)
+uv pip install setuptools
+uv pip install iisignature --no-build-isolation
+uv run pytest tests/test_api_compat.py
+
+# Run benchmark
+uv run python scripts/benchmark.py
+
 # Code quality
 uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/

@@ -166,3 +166,60 @@ def concat_levels(levels: list[NDArray[np.float64]]) -> NDArray[np.float64]:
         1D array of length sum(d^k for k in 1..m).
     """
     return np.concatenate(levels)
+
+
+# --- Batched operations for vectorized computation ---
+
+
+def sig_of_segment_batch(
+    displacements: NDArray[np.float64],
+    m: int,
+) -> list[NDArray[np.float64]]:
+    """Signature of all linear segments at once (batched truncated exponential).
+
+    For n displacements, computes all n segment signatures in parallel
+    using einsum instead of per-segment Python loops.
+
+    Args:
+        displacements: Array of shape (n, d), one displacement per segment.
+        m: Truncation depth.
+
+    Returns:
+        Level-list of m arrays, where levels[k] has shape (n, d^(k+1)).
+    """
+    levels: list[NDArray[np.float64]] = [displacements.copy()]
+    for k in range(2, m + 1):
+        prev = levels[-1]
+        new_level = np.einsum("ni,nj->nij", prev, displacements)
+        levels.append(new_level.reshape(prev.shape[0], -1) / k)
+    return levels
+
+
+def tensor_multiply_batch(
+    a: list[NDArray[np.float64]],
+    b: list[NDArray[np.float64]],
+) -> list[NDArray[np.float64]]:
+    """Batched tensor multiply (implicit 1 at level 0).
+
+    Both a and b are batched level-lists: each a[k] has shape (batch, d^(k+1)).
+    All batch elements are multiplied independently in parallel.
+
+    Args:
+        a: Batched level-list of first elements.
+        b: Batched level-list of second elements.
+
+    Returns:
+        Batched level-list of products.
+    """
+    m = len(a)
+    result = [a[k] + b[k] for k in range(m)]
+
+    for k in range(m):
+        for i in range(k + 1):
+            j = k - 1 - i
+            if j < 0:
+                continue
+            outer = np.einsum("ni,nj->nij", a[i], b[j])
+            result[k] = result[k] + outer.reshape(outer.shape[0], -1)
+
+    return result

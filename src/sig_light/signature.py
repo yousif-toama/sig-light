@@ -12,9 +12,10 @@ from numpy.typing import NDArray
 
 from sig_light.algebra import (
     concat_levels,
-    sig_of_segment,
+    sig_of_segment_batch,
     split_signature,
     tensor_multiply,
+    tensor_multiply_batch,
 )
 
 
@@ -108,8 +109,9 @@ def sig_levels(
 ) -> list[NDArray[np.float64]]:
     """Compute the signature as a level-list (internal API).
 
-    Always returns a list of per-level arrays. Used by logsignature.py
-    to avoid union return type.
+    Uses batched segment signatures and binary tree reduction for
+    performance. All segment signatures are computed in parallel,
+    then combined pairwise using batched tensor multiplication.
 
     Args:
         path: Array of shape (n, d).
@@ -124,15 +126,29 @@ def sig_levels(
     if n < 2:
         return _zeros_by_level(d, m)
 
-    h = path[1] - path[0]
-    levels = sig_of_segment(h, m)
+    # Batch compute all segment signatures at once
+    displacements = np.diff(path, axis=0)  # (n-1, d)
+    levels = sig_of_segment_batch(displacements, m)
 
-    for i in range(2, n):
-        h = path[i] - path[i - 1]
-        seg = sig_of_segment(h, m)
-        levels = tensor_multiply(levels, seg)
+    # Binary tree reduction: combine pairs at each layer
+    # Preserves left-to-right order via associativity
+    while levels[0].shape[0] > 1:
+        batch = levels[0].shape[0]
 
-    return levels
+        if batch % 2 == 1:
+            remainder = [lev[-1:] for lev in levels]
+            levels = [lev[:-1] for lev in levels]
+        else:
+            remainder = None
+
+        left = [lev[0::2] for lev in levels]
+        right = [lev[1::2] for lev in levels]
+        levels = tensor_multiply_batch(left, right)
+
+        if remainder is not None:
+            levels = [np.concatenate([lev, rem]) for lev, rem in zip(levels, remainder)]
+
+    return [lev[0] for lev in levels]
 
 
 def _zeros_by_level(
