@@ -125,6 +125,14 @@ class TestLogsig:
         expected = np.array([1.0, 1.0, 0.5])
         np.testing.assert_allclose(ls, expected, atol=1e-12)
 
+    def test_1d_path(self):
+        """1D log signature: only level 1 has a Lyndon word."""
+        path = np.array([[0.0], [1.0], [3.0]])
+        s = sig_light.prepare(1, 3)
+        ls = sig_light.logsig(path, s)
+        # For d=1, log sig is just the net displacement
+        np.testing.assert_allclose(ls, [3.0], atol=1e-12)
+
 
 class TestLogsigExpanded:
     """Tests for logsig_expanded (X method)."""
@@ -146,3 +154,10 @@ class TestLogsigExpanded:
         s = sig_light.prepare(d, m)
         ls = sig_light.logsig_expanded(path, s)
         assert ls.shape == (sig_light.siglength(d, m),)
+
+    def test_single_point_is_zero(self, single_point):
+        """1-point path gives zero expanded log signature."""
+        s = sig_light.prepare(2, 2)
+        ls = sig_light.logsig_expanded(single_point, s)
+        assert ls.shape == (sig_light.siglength(2, 2),)
+        np.testing.assert_allclose(ls, 0.0)

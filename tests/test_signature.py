@@ -5,6 +5,16 @@ import numpy as np
 import sig_light
 
 
+class TestVersion:
+    """Tests for version()."""
+
+    def test_version_returns_string(self):
+        assert isinstance(sig_light.version(), str)
+
+    def test_version_matches_dunder(self):
+        assert sig_light.version() == sig_light.__version__
+
+
 class TestSiglength:
     """Tests for siglength()."""
 
