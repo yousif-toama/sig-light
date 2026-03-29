@@ -180,3 +180,15 @@ class TestLogsigbackprop:
         deriv = np.ones(sig_light.logsiglength(1, 3))
         grad = sig_light.logsigbackprop(deriv, path, s)
         assert grad.shape == (5, 1)
+
+    def test_batched(self, rng):
+        """Batched logsigbackprop matches individual."""
+        d, m = 2, 2
+        paths = rng.standard_normal((3, 6, d))
+        s = sig_light.prepare(d, m)
+        derivs = rng.standard_normal((3, sig_light.logsiglength(d, m)))
+        result = sig_light.logsigbackprop(derivs, paths, s)
+        assert result.shape == (3, 6, d)
+        for i in range(3):
+            individual = sig_light.logsigbackprop(derivs[i], paths[i], s)
+            np.testing.assert_allclose(result[i], individual, atol=1e-12)

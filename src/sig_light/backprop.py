@@ -34,15 +34,29 @@ def sigbackprop(
     dL/dpath by backpropagating through the Chen's identity fold.
 
     Args:
-        deriv: Gradient w.r.t. signature, flat array of shape
-            (siglength(d, m),).
-        path: Array of shape (n, d) representing the piecewise-linear path.
+        deriv: Gradient w.r.t. signature, shape (..., siglength(d, m)).
+        path: Array of shape (..., n, d).
         m: Truncation depth.
 
     Returns:
-        Gradient w.r.t. path, array of shape (n, d).
+        Gradient w.r.t. path, shape (..., n, d).
     """
     path = np.asarray(path, dtype=np.float64)
+    deriv = np.asarray(deriv, dtype=np.float64)
+
+    if path.ndim > 2:
+        batch_shape = path.shape[:-2]
+        n, d = path.shape[-2], path.shape[-1]
+        flat_path = path.reshape(-1, n, d)
+        flat_deriv = deriv.reshape(-1, deriv.shape[-1])
+        results = np.stack(
+            [
+                sigbackprop(flat_deriv[i], flat_path[i], m)
+                for i in range(flat_path.shape[0])
+            ]
+        )
+        return results.reshape(*batch_shape, n, d)
+
     n, d = path.shape
 
     if n < 2:
@@ -162,15 +176,29 @@ def logsigbackprop(
     Backpropagates through: path -> signature -> tensor_log -> projection.
 
     Args:
-        deriv: Gradient w.r.t. log signature, flat array of shape
-            (logsiglength(d, m),).
-        path: Array of shape (n, d).
+        deriv: Gradient w.r.t. log signature, shape (..., logsiglength(d, m)).
+        path: Array of shape (..., n, d).
         s: Prepared data from ``prepare()``.
 
     Returns:
-        Gradient w.r.t. path, array of shape (n, d).
+        Gradient w.r.t. path, shape (..., n, d).
     """
     path = np.asarray(path, dtype=np.float64)
+    deriv = np.asarray(deriv, dtype=np.float64)
+
+    if path.ndim > 2:
+        batch_shape = path.shape[:-2]
+        n, d = path.shape[-2], path.shape[-1]
+        flat_path = path.reshape(-1, n, d)
+        flat_deriv = deriv.reshape(-1, deriv.shape[-1])
+        results = np.stack(
+            [
+                logsigbackprop(flat_deriv[i], flat_path[i], s)
+                for i in range(flat_path.shape[0])
+            ]
+        )
+        return results.reshape(*batch_shape, n, d)
+
     n, d = path.shape
     m = s.m
 
