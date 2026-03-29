@@ -186,27 +186,30 @@ sig-light implements the full iisignature API with an identical interface. It tr
 
 ## Development
 
+Requires [just](https://github.com/casey/just) for task running.
+
 ```bash
 # Clone and install
 git clone https://github.com/yousif-toama/sig-light.git
 cd sig-light
-uv sync
+just sync
 
 # Run tests
-uv run pytest
+just test
+
+# Code quality (lint + format check + type check)
+just check
+
+# Run tests with coverage
+just test-cov
+
+# Run benchmark
+just bench
 
 # Install iisignature for cross-validation testing (requires C++ compiler)
 uv pip install setuptools
 uv pip install iisignature --no-build-isolation
 uv run pytest tests/test_api_compat.py
-
-# Run benchmark
-uv run python scripts/benchmark.py
-
-# Code quality
-uv run ruff check src/ tests/ scripts/
-uv run ruff format --check src/ tests/ scripts/
-uv run ty check
 ```
 
 ## License
