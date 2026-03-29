@@ -245,7 +245,7 @@ def _mobius(n: int) -> int:
                 return 0  # squared factor
             factors += 1
         d += 1 if d == 2 else 2
-    if remaining > 1:
+    if remaining > 1:  # pragma: no branch
         factors += 1
 
     return 1 if factors % 2 == 0 else -1
