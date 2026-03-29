@@ -12,6 +12,7 @@ from numpy.typing import NDArray
 
 from sig_light.algebra import (
     concat_levels,
+    sig_of_segment,
     sig_of_segment_batch,
     split_signature,
     tensor_multiply,
@@ -50,6 +51,14 @@ def sig(
 ) -> list[NDArray[np.float64]]: ...
 
 
+@overload
+def sig(
+    path: NDArray[np.float64],
+    m: int,
+    format: Literal[2] = ...,
+) -> NDArray[np.float64]: ...
+
+
 def sig(
     path: NDArray[np.float64],
     m: int,
@@ -61,20 +70,89 @@ def sig(
     the tensor product of their individual signatures.
 
     Args:
-        path: Array of shape (n, d) representing a d-dimensional path
-            with n points. Must have dtype float32 or float64.
+        path: Array of shape (..., n, d) representing a d-dimensional path
+            with n points. Extra leading dimensions are batched.
         m: Truncation depth (positive integer).
         format: Output format.
-            0: flat 1D array of length siglength(d, m).
-            1: list of m arrays, one per level.
+            0: flat array of shape (..., siglength(d, m)).
+            1: list of m arrays, one per level (no batching support).
+            2: cumulative prefix signatures, shape (..., n-1, siglength(d, m)).
 
     Returns:
         The path signature, excluding the level-0 term (which is always 1).
     """
+    path = np.asarray(path, dtype=np.float64)
+
+    if path.ndim > 2 and format != 1:
+        return _sig_batched(path, m, format)
+
+    if format == 2:
+        return _sig_cumulative(path, m)
+
     levels = sig_levels(path, m)
     if format == 1:
         return levels
     return concat_levels(levels)
+
+
+def _sig_batched(
+    path: NDArray[np.float64],
+    m: int,
+    format: int,
+) -> NDArray[np.float64]:
+    """Handle batched paths with extra leading dimensions."""
+    batch_shape = path.shape[:-2]
+    n, d = path.shape[-2], path.shape[-1]
+    flat_batch = path.reshape(-1, n, d)
+    batch_size = flat_batch.shape[0]
+
+    if format == 2:
+        results = np.stack(
+            [_sig_cumulative(flat_batch[i], m) for i in range(batch_size)]
+        )
+        return results.reshape(*batch_shape, n - 1, siglength(d, m))
+
+    results = np.stack(
+        [concat_levels(sig_levels(flat_batch[i], m)) for i in range(batch_size)]
+    )
+    return results.reshape(*batch_shape, siglength(d, m))
+
+
+def _sig_cumulative(
+    path: NDArray[np.float64],
+    m: int,
+) -> NDArray[np.float64]:
+    """Compute cumulative prefix signatures (format=2).
+
+    Returns signatures of path[:2], path[:3], ..., path[:n].
+
+    Args:
+        path: Array of shape (n, d).
+        m: Truncation depth.
+
+    Returns:
+        Array of shape (n-1, siglength(d, m)).
+    """
+    path = np.asarray(path, dtype=np.float64)
+    n, d = path.shape
+    sl = siglength(d, m)
+
+    if n < 2:
+        return np.zeros((0, sl))
+
+    displacements = np.diff(path, axis=0)
+    result = np.zeros((n - 1, sl))
+
+    # Sequential accumulation (need all intermediates)
+    acc = sig_of_segment(displacements[0], m)
+    result[0] = concat_levels(acc)
+
+    for i in range(1, n - 1):
+        seg = sig_of_segment(displacements[i], m)
+        acc = tensor_multiply(acc, seg)
+        result[i] = concat_levels(acc)
+
+    return result
 
 
 def sigcombine(
@@ -89,16 +167,41 @@ def sigcombine(
     their concatenation: S(path1 * path2) = S1 tensor S2.
 
     Args:
-        sig1: Flat signature array of length siglength(d, m).
-        sig2: Flat signature array of length siglength(d, m).
+        sig1: Flat signature array of shape (..., siglength(d, m)).
+        sig2: Flat signature array of shape (..., siglength(d, m)).
         d: Path dimension.
         m: Truncation depth.
 
     Returns:
-        Flat signature array of length siglength(d, m).
+        Flat signature array of shape (..., siglength(d, m)).
     """
-    levels1 = split_signature(np.asarray(sig1, dtype=np.float64), d, m)
-    levels2 = split_signature(np.asarray(sig2, dtype=np.float64), d, m)
+    sig1 = np.asarray(sig1, dtype=np.float64)
+    sig2 = np.asarray(sig2, dtype=np.float64)
+
+    if sig1.ndim > 1:
+        batch_shape = sig1.shape[:-1]
+        flat1 = sig1.reshape(-1, sig1.shape[-1])
+        flat2 = sig2.reshape(-1, sig2.shape[-1])
+        results = np.stack(
+            [
+                _sigcombine_single(flat1[i], flat2[i], d, m)
+                for i in range(flat1.shape[0])
+            ]
+        )
+        return results.reshape(*batch_shape, siglength(d, m))
+
+    return _sigcombine_single(sig1, sig2, d, m)
+
+
+def _sigcombine_single(
+    sig1: NDArray[np.float64],
+    sig2: NDArray[np.float64],
+    d: int,
+    m: int,
+) -> NDArray[np.float64]:
+    """Single (non-batched) sigcombine."""
+    levels1 = split_signature(sig1, d, m)
+    levels2 = split_signature(sig2, d, m)
     result = tensor_multiply(levels1, levels2)
     return concat_levels(result)
 

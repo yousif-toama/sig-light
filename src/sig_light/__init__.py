@@ -13,6 +13,7 @@ Example::
     print(s)  # [1. 1. 0.5 1. 0. 0.5]
 """
 
+from sig_light.backprop import logsigbackprop, sigbackprop, sigjacobian
 from sig_light.logsignature import (
     PreparedData,
     basis,
@@ -21,21 +22,46 @@ from sig_light.logsignature import (
     logsiglength,
     prepare,
 )
+from sig_light.rotational import (
+    RotInv2DPreparedData,
+    rotinv2d,
+    rotinv2dcoeffs,
+    rotinv2dlength,
+    rotinv2dprepare,
+)
 from sig_light.signature import sig, sigcombine, siglength
+from sig_light.transforms import (
+    sigjoin,
+    sigjoinbackprop,
+    sigscale,
+    sigscalebackprop,
+)
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "PreparedData",
+    "RotInv2DPreparedData",
     "__version__",
     "basis",
     "logsig",
     "logsig_expanded",
+    "logsigbackprop",
     "logsiglength",
     "prepare",
+    "rotinv2d",
+    "rotinv2dcoeffs",
+    "rotinv2dlength",
+    "rotinv2dprepare",
     "sig",
+    "sigbackprop",
     "sigcombine",
+    "sigjacobian",
+    "sigjoin",
+    "sigjoinbackprop",
     "siglength",
+    "sigscale",
+    "sigscalebackprop",
     "version",
 ]
 

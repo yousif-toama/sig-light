@@ -35,9 +35,13 @@ signature = sig_light.sig(path, 3)
 s = sig_light.prepare(2, 3)
 log_signature = sig_light.logsig(path, s)
 
-# View the basis labels
-print(sig_light.basis(s))
-# ['1', '2', '[1,2]', '[1,[1,2]]', '[[1,2],2]']
+# Backpropagation
+deriv = np.ones_like(signature)
+grad = sig_light.sigbackprop(deriv, path, 3)  # gradient w.r.t. path
+
+# Batching: process multiple paths at once
+paths = np.random.randn(10, 50, 2)  # 10 paths, 50 points, 2D
+sigs = sig_light.sig(paths, 3)  # shape (10, siglength(2, 3))
 ```
 
 ## API Reference
@@ -48,90 +52,103 @@ print(sig_light.basis(s))
 
 Compute the signature of a path truncated at depth `m`.
 
-- **path**: numpy array of shape `(n, d)` — a `d`-dimensional path with `n` points.
+- **path**: numpy array of shape `(..., n, d)`. Extra leading dims are batched.
 - **m**: truncation depth (positive integer).
 - **format**: output format.
-  - `0`: flat 1D array of length `siglength(d, m)`.
+  - `0`: flat array of shape `(..., siglength(d, m))`.
   - `1`: list of `m` arrays, one per level.
+  - `2`: cumulative prefix signatures, shape `(..., n-1, siglength(d, m))`.
 - **Returns**: the path signature, excluding the level-0 term (always 1).
-
-```python
-path = np.array([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]])
-
-sig_light.sig(path, 2)
-# array([1. , 1. , 0.5, 1. , 0. , 0.5])
-
-sig_light.sig(path, 2, format=1)
-# [array([1., 1.]), array([0.5, 1. , 0. , 0.5])]
-```
 
 #### `siglength(d, m)`
 
-Length of the signature output (levels 1 through `m`).
-
-```python
-sig_light.siglength(3, 3)  # 39
-```
+Length of the signature output: `d + d^2 + ... + d^m`.
 
 #### `sigcombine(sig1, sig2, d, m)`
 
-Combine two signatures via Chen's identity. If `sig1` is the signature of path A and `sig2` is the signature of path B, returns the signature of their concatenation.
+Combine two signatures via Chen's identity. Supports batching.
 
-```python
-s1 = sig_light.sig(path[:2], 2)
-s2 = sig_light.sig(path[1:], 2)
-combined = sig_light.sigcombine(s1, s2, 2, 2)
-# Equals sig_light.sig(path, 2)
-```
+### Backpropagation
+
+#### `sigbackprop(deriv, path, m)`
+
+Compute gradient of a loss w.r.t. the path, given gradient w.r.t. the signature.
+
+- **deriv**: shape `(..., siglength(d, m))`.
+- **path**: shape `(..., n, d)`.
+- **Returns**: shape `(..., n, d)`.
+
+#### `sigjacobian(path, m)`
+
+Full Jacobian matrix of `sig()` w.r.t. the path.
+
+- **Returns**: shape `(n, d, siglength(d, m))`.
+
+#### `logsigbackprop(deriv, path, s)`
+
+Compute gradient of a loss w.r.t. the path, given gradient w.r.t. the log signature.
+
+- **deriv**: shape `(..., logsiglength(d, m))`.
+- **path**: shape `(..., n, d)`.
+- **s**: prepared data from `prepare(d, m)`.
+- **Returns**: shape `(..., n, d)`.
 
 ### Log Signature
 
 #### `prepare(d, m)`
 
-Precompute data for log signature computation. Returns an opaque object used by `logsig()` and `basis()`.
-
-- **d**: path dimension.
-- **m**: truncation depth.
-
-```python
-s = sig_light.prepare(2, 3)
-```
+Precompute data for log signature computation.
 
 #### `logsig(path, s)`
 
-Compute the log signature of a path in the Lyndon basis.
-
-- **path**: numpy array of shape `(n, d)`.
-- **s**: prepared data from `prepare(d, m)`.
-- **Returns**: 1D array of length `logsiglength(d, m)`.
-
-```python
-s = sig_light.prepare(2, 2)
-sig_light.logsig(np.array([[0., 0.], [1., 0.], [1., 1.]]), s)
-# array([1. , 1. , 0.5])
-```
+Compute the log signature in the Lyndon basis. Supports batching.
 
 #### `logsig_expanded(path, s)`
 
-Compute the log signature in the full tensor expansion (no Lyndon projection). Output length equals `siglength(d, m)`.
+Compute the log signature in the full tensor expansion. Supports batching.
 
 #### `logsiglength(d, m)`
 
-Length of the log signature output (number of Lyndon words up to length `m`). Computed via Witt's formula.
-
-```python
-sig_light.logsiglength(3, 3)  # 14
-```
+Length of the log signature output (Witt's formula).
 
 #### `basis(s)`
 
 Get the Lyndon bracket labels for the log signature basis elements.
 
-```python
-s = sig_light.prepare(2, 3)
-sig_light.basis(s)
-# ['1', '2', '[1,2]', '[1,[1,2]]', '[[1,2],2]']
-```
+### Transforms
+
+#### `sigjoin(sig, segment, d, m, fixedLast=nan)`
+
+Extend a signature by appending a linear segment. Equivalent to `sigcombine(sig, sig_of_segment(segment), d, m)`.
+
+#### `sigjoinbackprop(deriv, sig, segment, d, m, fixedLast=nan)`
+
+Gradient through `sigjoin`. Returns `(dsig, dsegment)` or `(dsig, dsegment, dfixedLast)`.
+
+#### `sigscale(sig, scales, d, m)`
+
+Rescale a signature as if each path dimension were multiplied by a factor. At level k, the multi-index `(i1,...,ik)` component is multiplied by `scales[i1] * ... * scales[ik]`.
+
+#### `sigscalebackprop(deriv, sig, scales, d, m)`
+
+Gradient through `sigscale`. Returns `(dsig, dscales)`.
+
+### Rotation Invariants (2D paths)
+
+#### `rotinv2dprepare(m, type="a")`
+
+Precompute rotation-invariant features for 2D paths.
+
+- **m**: depth (should be even).
+- **type**: `"a"` for all invariants.
+
+#### `rotinv2d(path, s)`
+
+Compute rotation-invariant features of a 2D path signature.
+
+#### `rotinv2dlength(s)` / `rotinv2dcoeffs(s)`
+
+Get the number of invariants and their coefficient matrices.
 
 ### Utility
 
@@ -149,6 +166,8 @@ sig-light uses the standard approach for computing signatures of piecewise-linea
 
 3. **Log signature**: computed by taking the tensor logarithm `log(S) = (S-1) - (S-1)^2/2 + (S-1)^3/3 - ...` and projecting onto the Lyndon word basis.
 
+4. **Backpropagation**: reverse-mode differentiation through the Chen's identity chain using adjoint operations on the tensor algebra.
+
 This approach is exact for piecewise-linear paths (no numerical approximation from ODE solvers).
 
 ## Comparison with iisignature
@@ -157,12 +176,13 @@ This approach is exact for piecewise-linear paths (no numerical approximation fr
 |---|---|---|
 | Language | Pure Python + numpy | C++ with Python bindings |
 | Installation | `pip install` (no compilation) | Requires C++ compiler |
-| Performance | Slower | Faster |
-| API | Compatible subset | Full |
-| Backpropagation | Not yet | Yes |
-| Batching | Not yet | Yes |
+| Performance | Slower (~7-25x for sig) | Faster |
+| API | Full parity | Full |
+| Backpropagation | Yes | Yes |
+| Batching | Yes | Yes |
+| Rotation invariants | Yes (type "a") | Yes (types a/s/q/k) |
 
-sig-light implements the core signature and log signature functions with an API matching iisignature. It trades performance for portability and simplicity.
+sig-light implements the full iisignature API with an identical interface. It trades performance for portability and simplicity.
 
 ## Development
 
@@ -184,8 +204,8 @@ uv run pytest tests/test_api_compat.py
 uv run python scripts/benchmark.py
 
 # Code quality
-uv run ruff check src/ tests/
-uv run ruff format --check src/ tests/
+uv run ruff check src/ tests/ scripts/
+uv run ruff format --check src/ tests/ scripts/
 uv run ty check
 ```
 

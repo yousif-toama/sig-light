@@ -153,3 +153,103 @@ class TestSigcombine:
 
         np.testing.assert_allclose(sig_light.sigcombine(s, zero, d, m), s, atol=1e-12)
         np.testing.assert_allclose(sig_light.sigcombine(zero, s, d, m), s, atol=1e-12)
+
+
+class TestSigFormat2:
+    """Tests for sig() with format=2 (cumulative prefix signatures)."""
+
+    def test_output_shape(self, rng):
+        """format=2 returns shape (n-1, siglength)."""
+        d, m = 3, 3
+        path = rng.standard_normal((10, d))
+        result = sig_light.sig(path, m, format=2)
+        assert result.shape == (9, sig_light.siglength(d, m))
+
+    def test_last_row_matches_full_sig(self, rng):
+        """Last row matches sig(path, m)."""
+        d, m = 2, 3
+        path = rng.standard_normal((8, d))
+        cumulative = sig_light.sig(path, m, format=2)
+        full = sig_light.sig(path, m)
+        np.testing.assert_allclose(cumulative[-1], full, atol=1e-12)
+
+    def test_each_row_matches_prefix(self, rng):
+        """Row i matches sig(path[:i+2], m)."""
+        d, m = 2, 3
+        path = rng.standard_normal((7, d))
+        cumulative = sig_light.sig(path, m, format=2)
+
+        for i in range(len(path) - 1):
+            expected = sig_light.sig(path[: i + 2], m)
+            np.testing.assert_allclose(cumulative[i], expected, atol=1e-12)
+
+    def test_single_point_returns_empty(self, single_point):
+        """Single-point path returns shape (0, siglength)."""
+        d = single_point.shape[1]
+        m = 3
+        result = sig_light.sig(single_point, m, format=2)
+        assert result.shape == (0, sig_light.siglength(d, m))
+
+    def test_batched_format2(self, rng):
+        """Batched format=2 matches individual computation."""
+        d, m = 2, 2
+        batch = rng.standard_normal((3, 6, d))
+        result = sig_light.sig(batch, m, format=2)
+        assert result.shape == (3, 5, sig_light.siglength(d, m))
+
+        for i in range(3):
+            individual = sig_light.sig(batch[i], m, format=2)
+            np.testing.assert_allclose(result[i], individual, atol=1e-12)
+
+
+class TestSigBatching:
+    """Tests for batched sig() computation."""
+
+    def test_batch_shape(self, rng):
+        """Batch of paths: shape (B, n, d) -> (B, siglength)."""
+        d, m = 2, 3
+        batch = rng.standard_normal((4, 10, d))
+        result = sig_light.sig(batch, m)
+        assert result.shape == (4, sig_light.siglength(d, m))
+
+    def test_batch_matches_individual(self, rng):
+        """Each batch element matches individual computation."""
+        d, m = 2, 3
+        batch = rng.standard_normal((5, 8, d))
+        result = sig_light.sig(batch, m)
+
+        for i in range(5):
+            individual = sig_light.sig(batch[i], m)
+            np.testing.assert_allclose(result[i], individual, atol=1e-12)
+
+    def test_multidim_batch(self, rng):
+        """Multi-dimensional batch: (B1, B2, n, d) -> (B1, B2, siglength)."""
+        d, m = 2, 2
+        batch = rng.standard_normal((3, 4, 6, d))
+        result = sig_light.sig(batch, m)
+        assert result.shape == (3, 4, sig_light.siglength(d, m))
+
+        for i in range(3):
+            for j in range(4):
+                individual = sig_light.sig(batch[i, j], m)
+                np.testing.assert_allclose(result[i, j], individual, atol=1e-12)
+
+
+class TestSigcombineBatching:
+    """Tests for batched sigcombine()."""
+
+    def test_batch_matches_individual(self, rng):
+        """Batched sigcombine matches individual computation."""
+        d, m = 2, 3
+        batch_size = 5
+        sl = sig_light.siglength(d, m)
+
+        sig1_batch = rng.standard_normal((batch_size, sl))
+        sig2_batch = rng.standard_normal((batch_size, sl))
+
+        result = sig_light.sigcombine(sig1_batch, sig2_batch, d, m)
+        assert result.shape == (batch_size, sl)
+
+        for i in range(batch_size):
+            individual = sig_light.sigcombine(sig1_batch[i], sig2_batch[i], d, m)
+            np.testing.assert_allclose(result[i], individual, atol=1e-12)
