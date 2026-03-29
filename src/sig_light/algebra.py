@@ -8,8 +8,6 @@ Two conventions exist for the implicit level-0 scalar:
 - "nil" (implicit 0): used by tensor_multiply_nil (for tensor log/exp powers)
 """
 
-import math
-
 import numpy as np
 from numpy.typing import NDArray
 
@@ -168,52 +166,3 @@ def concat_levels(levels: list[NDArray[np.float64]]) -> NDArray[np.float64]:
         1D array of length sum(d^k for k in 1..m).
     """
     return np.concatenate(levels)
-
-
-def segment_log_signature(
-    displacement: NDArray[np.float64],
-    m: int,
-) -> list[NDArray[np.float64]]:
-    """Log signature of a single linear segment.
-
-    For a straight line, the log signature has only a level-1 component
-    equal to the displacement, with all higher levels zero.
-
-    Args:
-        displacement: 1D array of shape (d,).
-        m: Truncation depth.
-
-    Returns:
-        Level-list where only level 0 (mathematical level 1) is nonzero.
-    """
-    d = len(displacement)
-    levels: list[NDArray[np.float64]] = [displacement.copy()]
-    for k in range(2, m + 1):
-        levels.append(np.zeros(d**k, dtype=displacement.dtype))
-    return levels
-
-
-def _level_sizes(d: int, m: int) -> list[int]:
-    """Compute the size of each signature level.
-
-    Args:
-        d: Path dimension.
-        m: Signature depth.
-
-    Returns:
-        List of m integers: [d, d^2, ..., d^m].
-    """
-    return [d**k for k in range(1, m + 1)]
-
-
-def _total_sig_length(d: int, m: int) -> int:
-    """Total length of a flat signature (levels 1 through m).
-
-    Args:
-        d: Path dimension.
-        m: Signature depth.
-
-    Returns:
-        d + d^2 + ... + d^m.
-    """
-    return sum(math.pow(d, k) for k in range(1, m + 1)).__trunc__()

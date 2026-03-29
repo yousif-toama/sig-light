@@ -1,5 +1,8 @@
 # sig-light
 
+[![CICD](https://github.com/yousif-toama/sig-light/actions/workflows/cicd.yml/badge.svg)](https://github.com/yousif-toama/sig-light/actions/workflows/cicd.yml)
+[![codecov](https://codecov.io/gh/yousif-toama/sig-light/graph/badge.svg)](https://codecov.io/gh/yousif-toama/sig-light)
+
 Pure-Python path signature and log signature computation, mirroring the [iisignature](https://github.com/bottler/iisignature) API.
 
 sig-light computes signatures and log signatures of multidimensional piecewise-linear paths using Chen's identity and truncated tensor algebra operations. No C extensions or compilation required — just numpy.

@@ -1,6 +1,7 @@
-"""Tests for truncated tensor algebra operations."""
+"""Tests for truncated tensor algebra and Lyndon word operations."""
 
 import numpy as np
+import pytest
 
 from sig_light.algebra import (
     concat_levels,
@@ -9,6 +10,12 @@ from sig_light.algebra import (
     tensor_log,
     tensor_multiply,
     tensor_multiply_nil,
+)
+from sig_light.lyndon import (
+    _is_lyndon,
+    build_projection_matrices,
+    generate_lyndon_words,
+    standard_factorization,
 )
 
 
@@ -178,3 +185,53 @@ class TestSplitConcat:
         assert len(levels) == m
         for k in range(m):
             assert levels[k].shape == (d ** (k + 1),)
+
+
+class TestIsLyndon:
+    """Tests for _is_lyndon helper."""
+
+    def test_empty_word(self):
+        assert _is_lyndon(()) is False
+
+    def test_single_letter(self):
+        assert _is_lyndon((0,)) is True
+        assert _is_lyndon((1,)) is True
+
+    def test_lyndon_word(self):
+        assert _is_lyndon((0, 1)) is True
+
+    def test_non_lyndon(self):
+        assert _is_lyndon((1, 0)) is False
+        assert _is_lyndon((0, 0)) is False
+
+
+class TestStandardFactorization:
+    """Tests for standard_factorization."""
+
+    def test_length_2(self):
+        u, v = standard_factorization((0, 1))
+        assert u == (0,)
+        assert v == (1,)
+
+    def test_length_3(self):
+        u, v = standard_factorization((0, 0, 1))
+        assert u == (0,)
+        assert v == (0, 1)
+
+    def test_invalid_raises(self):
+        """Non-Lyndon words with no valid factorization raise ValueError."""
+        with pytest.raises(ValueError, match="No standard factorization"):
+            standard_factorization((0,))
+
+
+class TestBuildProjectionMatrices:
+    """Tests for build_projection_matrices edge cases."""
+
+    def test_empty_level(self):
+        """Levels with no Lyndon words produce empty matrices."""
+        # d=1 has no Lyndon words of length > 1
+        words = generate_lyndon_words(1, 3)
+        matrices = build_projection_matrices(1, 3, words)
+        assert matrices[0].shape == (1, 1)  # level 1: just (0,)
+        assert matrices[1].shape == (0, 1)  # level 2: no words
+        assert matrices[2].shape == (0, 1)  # level 3: no words

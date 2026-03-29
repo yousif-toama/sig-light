@@ -117,9 +117,6 @@ def logsig(path: NDArray[np.float64], s: PreparedData) -> NDArray[np.float64]:
         coords = proj_matrix @ log_levels[k]
         projected.append(coords)
 
-    if not projected:
-        return np.zeros(logsiglength(s.d, s.m))
-
     return np.concatenate(projected)
 
 

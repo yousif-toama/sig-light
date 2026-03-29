@@ -5,6 +5,8 @@ The signature of a piecewise-linear path is computed exactly by:
 2. Composing segment signatures via Chen's identity (tensor multiplication).
 """
 
+from typing import Literal, overload
+
 import numpy as np
 from numpy.typing import NDArray
 
@@ -29,6 +31,22 @@ def siglength(d: int, m: int) -> int:
     if d == 1:
         return m
     return d * (d**m - 1) // (d - 1)
+
+
+@overload
+def sig(
+    path: NDArray[np.float64],
+    m: int,
+    format: Literal[0] = ...,
+) -> NDArray[np.float64]: ...
+
+
+@overload
+def sig(
+    path: NDArray[np.float64],
+    m: int,
+    format: Literal[1] = ...,
+) -> list[NDArray[np.float64]]: ...
 
 
 def sig(
