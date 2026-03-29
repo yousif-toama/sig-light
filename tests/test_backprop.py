@@ -93,6 +93,17 @@ class TestSigbackprop:
         np.testing.assert_allclose(grad, 0.0)
         assert grad.shape == single_point.shape
 
+    def test_batched(self, rng):
+        """Batched sigbackprop matches individual."""
+        d, m = 2, 2
+        paths = rng.standard_normal((4, 8, d))
+        derivs = rng.standard_normal((4, sig_light.siglength(d, m)))
+        result = sig_light.sigbackprop(derivs, paths, m)
+        assert result.shape == (4, 8, d)
+        for i in range(4):
+            individual = sig_light.sigbackprop(derivs[i], paths[i], m)
+            np.testing.assert_allclose(result[i], individual, atol=1e-12)
+
 
 class TestSigjacobian:
     """Tests for sigjacobian()."""
