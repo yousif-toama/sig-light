@@ -195,6 +195,172 @@ def sig_of_segment_batch(
     return levels
 
 
+# --- Adjoint (reverse-mode derivative) operations ---
+
+
+def tensor_multiply_adjoint(
+    dresult: list[NDArray[np.float64]],
+    a: list[NDArray[np.float64]],
+    b: list[NDArray[np.float64]],
+) -> tuple[list[NDArray[np.float64]], list[NDArray[np.float64]]]:
+    """Adjoint of tensor_multiply: gradients w.r.t. both inputs.
+
+    Given gradient of loss w.r.t. output of tensor_multiply(a, b),
+    computes gradients w.r.t. a and b.
+
+    Args:
+        dresult: Gradient w.r.t. output, same structure as output.
+        a: First input to the forward tensor_multiply.
+        b: Second input to the forward tensor_multiply.
+
+    Returns:
+        Tuple (da, db) of gradients w.r.t. a and b.
+    """
+    m = len(a)
+    da = [np.copy(dresult[k]) for k in range(m)]
+    db = [np.copy(dresult[k]) for k in range(m)]
+
+    for k in range(m):
+        for i in range(k + 1):
+            j = k - 1 - i
+            if j < 0:
+                continue
+            size_i = len(a[i])
+            size_j = len(b[j])
+            dr = dresult[k].reshape(size_i, size_j)
+            da[i] += dr @ b[j]
+            db[j] += a[i] @ dr
+
+    return da, db
+
+
+def sig_of_segment_adjoint(
+    dresult: list[NDArray[np.float64]],
+    displacement: NDArray[np.float64],
+    m: int,
+) -> NDArray[np.float64]:
+    """Adjoint of sig_of_segment: gradient w.r.t. displacement.
+
+    Forward: levels[0] = h, levels[k] = outer(levels[k-1], h) / (k+1)
+    where k is 1-indexed (levels list is 0-indexed, so levels[k] uses divisor k+1).
+
+    Args:
+        dresult: Gradient w.r.t. output levels.
+        displacement: The input displacement vector.
+        m: Truncation depth.
+
+    Returns:
+        Gradient w.r.t. displacement, shape (d,).
+    """
+    d = len(displacement)
+    h = displacement
+
+    # Recompute forward levels
+    levels: list[NDArray[np.float64]] = [h.copy()]
+    for k in range(2, m + 1):
+        levels.append(np.outer(levels[-1], h).ravel() / k)
+
+    # Initialize dlevel from dresult
+    dlevel = [np.copy(dresult[k]) for k in range(m)]
+
+    # dh accumulates the total gradient w.r.t. displacement
+    dh = np.zeros(d)
+
+    # Backprop through levels in reverse order
+    # levels[k] = outer(levels[k-1], h).ravel() / (k+1), for k = m-1,...,1 (0-indexed)
+    # In the forward, level at 0-index k uses divisor (k+1)
+    for k in range(m - 1, 0, -1):
+        divisor = k + 1
+        scaled = dlevel[k] / divisor
+        size_prev = d**k
+        mat = scaled.reshape(size_prev, d)
+
+        # Gradient w.r.t. levels[k-1] from the outer product
+        dlevel[k - 1] += mat @ h
+
+        # Gradient w.r.t. h from the outer product
+        dh += levels[k - 1] @ mat
+
+    # levels[0] = h (identity), so dlevel[0] contributes directly to dh
+    dh += dlevel[0]
+
+    return dh
+
+
+def tensor_log_adjoint(
+    dresult: list[NDArray[np.float64]],
+    levels: list[NDArray[np.float64]],
+) -> list[NDArray[np.float64]]:
+    """Adjoint of tensor_log: gradient w.r.t. input levels.
+
+    Forward: result = sum_{n=0}^{m-1} (-1)^n / (n+1) * powers[n]
+    where powers[0] = x, powers[n] = nil_mul(x, powers[n-1]).
+
+    Backward: propagate through the power chain in reverse.
+
+    Args:
+        dresult: Gradient w.r.t. output of tensor_log.
+        levels: The input to the forward tensor_log.
+
+    Returns:
+        Gradient w.r.t. input levels.
+    """
+    m = len(levels)
+
+    # Recompute forward powers
+    powers = [levels]
+    for n in range(1, m):
+        powers.append(tensor_multiply_nil(levels, powers[-1]))
+
+    # Direct gradient contribution from each power to the output
+    dpowers: list[list[NDArray[np.float64]]] = []
+    for n in range(m):
+        coeff = (-1) ** n / (n + 1)
+        dpowers.append([coeff * dresult[k] for k in range(m)])
+
+    # Backprop through the chain: powers[n] = nil_mul(x, powers[n-1])
+    dx = [np.zeros_like(levels[k]) for k in range(m)]
+
+    for n in range(m - 1, 0, -1):
+        da, db = _tensor_multiply_nil_adjoint(dpowers[n], levels, powers[n - 1])
+        for k in range(m):
+            dx[k] += da[k]
+            dpowers[n - 1][k] += db[k]
+
+    # dpowers[0] is the accumulated gradient for powers[0] = x
+    for k in range(m):
+        dx[k] += dpowers[0][k]
+
+    return dx
+
+
+def _tensor_multiply_nil_adjoint(
+    dresult: list[NDArray[np.float64]],
+    a: list[NDArray[np.float64]],
+    b: list[NDArray[np.float64]],
+) -> tuple[list[NDArray[np.float64]], list[NDArray[np.float64]]]:
+    """Adjoint of tensor_multiply_nil."""
+    m = len(a)
+    da = [np.zeros_like(a[k]) for k in range(m)]
+    db = [np.zeros_like(b[k]) for k in range(m)]
+
+    for k in range(m):
+        for i in range(k + 1):
+            j = k - 1 - i
+            if j < 0:
+                continue
+            size_i = len(a[i])
+            size_j = len(b[j])
+            dr = dresult[k].reshape(size_i, size_j)
+            da[i] += dr @ b[j]
+            db[j] += a[i] @ dr
+
+    return da, db
+
+
+# --- Batched operations for vectorized computation ---
+
+
 def tensor_multiply_batch(
     a: list[NDArray[np.float64]],
     b: list[NDArray[np.float64]],

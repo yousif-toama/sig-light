@@ -114,3 +114,92 @@ class TestBasisCompat:
             ours = sig_light.basis(s_ours)
             theirs = list(iisignature.basis(s_theirs))
             assert ours == theirs, f"d=3, m={m}: {ours} != {theirs}"
+
+
+class TestSigFormat2Compat:
+    """Compare sig format=2 against iisignature."""
+
+    def test_random_2d(self, rng):
+        path = rng.standard_normal((10, 2))
+        for m in [2, 3]:
+            ours = sig_light.sig(path, m, format=2)
+            theirs = iisignature.sig(path, m, 2)
+            np.testing.assert_allclose(ours, theirs, atol=1e-10)
+
+
+class TestSigbackpropCompat:
+    """Compare sigbackprop against iisignature."""
+
+    def test_random_2d(self, rng):
+        path = rng.standard_normal((10, 2))
+        for m in [2, 3]:
+            deriv = rng.standard_normal(iisignature.siglength(2, m))
+            ours = sig_light.sigbackprop(deriv, path, m)
+            theirs = iisignature.sigbackprop(deriv, path, m)
+            np.testing.assert_allclose(ours, theirs, atol=1e-10)
+
+    def test_random_3d(self, rng):
+        path = rng.standard_normal((8, 3))
+        m = 2
+        deriv = rng.standard_normal(iisignature.siglength(3, m))
+        ours = sig_light.sigbackprop(deriv, path, m)
+        theirs = iisignature.sigbackprop(deriv, path, m)
+        np.testing.assert_allclose(ours, theirs, atol=1e-10)
+
+
+class TestSigjacobianCompat:
+    """Compare sigjacobian against iisignature."""
+
+    def test_random_2d(self, rng):
+        path = rng.standard_normal((6, 2))
+        for m in [2, 3]:
+            ours = sig_light.sigjacobian(path, m)
+            theirs = iisignature.sigjacobian(path, m)
+            np.testing.assert_allclose(ours, theirs, atol=1e-10)
+
+
+class TestLogsigbackpropCompat:
+    """Compare logsigbackprop against iisignature."""
+
+    def test_random_2d(self, rng):
+        path = rng.standard_normal((10, 2))
+        for m in [2, 3]:
+            s_ours = sig_light.prepare(2, m)
+            s_theirs = iisignature.prepare(2, m, "S")
+            deriv = rng.standard_normal(iisignature.logsiglength(2, m))
+            ours = sig_light.logsigbackprop(deriv, path, s_ours)
+            theirs = iisignature.logsigbackprop(deriv, path, s_theirs, "S")
+            np.testing.assert_allclose(ours, theirs, atol=1e-8)
+
+
+class TestSigscaleCompat:
+    """Compare sigscale against iisignature."""
+
+    def test_random_2d(self, rng):
+        path = rng.standard_normal((10, 2))
+        scales = rng.standard_normal(2) + 2
+        for m in [2, 3]:
+            s = sig_light.sig(path, m)
+            ours = sig_light.sigscale(s, scales, 2, m)
+            theirs = iisignature.sigscale(s, scales, m)
+            np.testing.assert_allclose(ours, theirs, atol=1e-10)
+
+
+class TestBatchingCompat:
+    """Compare batched operations against iisignature."""
+
+    def test_batched_sig(self, rng):
+        paths = rng.standard_normal((5, 10, 2))
+        m = 3
+        ours = sig_light.sig(paths, m)
+        theirs = iisignature.sig(paths, m)
+        np.testing.assert_allclose(ours, theirs, atol=1e-10)
+
+    def test_batched_logsig(self, rng):
+        paths = rng.standard_normal((5, 10, 2))
+        m = 3
+        s_ours = sig_light.prepare(2, m)
+        s_theirs = iisignature.prepare(2, m)
+        ours = sig_light.logsig(paths, s_ours)
+        theirs = iisignature.logsig(paths, s_theirs)
+        np.testing.assert_allclose(ours, theirs, atol=1e-10)

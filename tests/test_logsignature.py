@@ -161,3 +161,61 @@ class TestLogsigExpanded:
         ls = sig_light.logsig_expanded(single_point, s)
         assert ls.shape == (sig_light.siglength(2, 2),)
         np.testing.assert_allclose(ls, 0.0)
+
+
+class TestLogsigBatching:
+    """Tests for batched logsig() computation."""
+
+    def test_batch_matches_individual(self, rng):
+        """Each batch element matches individual computation."""
+        d, m = 2, 3
+        s = sig_light.prepare(d, m)
+        batch = rng.standard_normal((5, 8, d))
+        result = sig_light.logsig(batch, s)
+        assert result.shape == (5, logsiglength(d, m))
+
+        for i in range(5):
+            individual = sig_light.logsig(batch[i], s)
+            np.testing.assert_allclose(result[i], individual, atol=1e-12)
+
+    def test_multidim_batch(self, rng):
+        """Multi-dimensional batch: (B1, B2, n, d) -> (B1, B2, logsiglength)."""
+        d, m = 2, 2
+        s = sig_light.prepare(d, m)
+        batch = rng.standard_normal((3, 4, 6, d))
+        result = sig_light.logsig(batch, s)
+        assert result.shape == (3, 4, logsiglength(d, m))
+
+        for i in range(3):
+            for j in range(4):
+                individual = sig_light.logsig(batch[i, j], s)
+                np.testing.assert_allclose(result[i, j], individual, atol=1e-12)
+
+
+class TestLogsigExpandedBatching:
+    """Tests for batched logsig_expanded() computation."""
+
+    def test_batch_matches_individual(self, rng):
+        """Each batch element matches individual computation."""
+        d, m = 2, 3
+        s = sig_light.prepare(d, m)
+        batch = rng.standard_normal((4, 7, d))
+        result = sig_light.logsig_expanded(batch, s)
+        assert result.shape == (4, sig_light.siglength(d, m))
+
+        for i in range(4):
+            individual = sig_light.logsig_expanded(batch[i], s)
+            np.testing.assert_allclose(result[i], individual, atol=1e-12)
+
+    def test_multidim_batch(self, rng):
+        """Multi-dimensional batch works for logsig_expanded."""
+        d, m = 2, 2
+        s = sig_light.prepare(d, m)
+        batch = rng.standard_normal((2, 3, 5, d))
+        result = sig_light.logsig_expanded(batch, s)
+        assert result.shape == (2, 3, sig_light.siglength(d, m))
+
+        for i in range(2):
+            for j in range(3):
+                individual = sig_light.logsig_expanded(batch[i, j], s)
+                np.testing.assert_allclose(result[i, j], individual, atol=1e-12)

@@ -89,26 +89,49 @@ def logsig(path: NDArray[np.float64], s: PreparedData) -> NDArray[np.float64]:
     then project onto the Lyndon basis.
 
     Args:
-        path: Array of shape (n, d) representing a piecewise-linear path.
+        path: Array of shape (..., n, d) representing a piecewise-linear path.
+            Extra leading dimensions are batched.
         s: Prepared data from ``prepare(d, m)``.
 
     Returns:
-        1D array of length ``logsiglength(d, m)`` containing the log
+        Array of shape (..., logsiglength(d, m)) containing the log
         signature in the Lyndon basis.
     """
     path = np.asarray(path, dtype=np.float64)
+
+    if path.ndim > 2:
+        return _logsig_batched(path, s)
+
+    return _logsig_single(path, s)
+
+
+def _logsig_batched(
+    path: NDArray[np.float64],
+    s: PreparedData,
+) -> NDArray[np.float64]:
+    """Handle batched paths for logsig."""
+    batch_shape = path.shape[:-2]
+    n, d = path.shape[-2], path.shape[-1]
+    flat_batch = path.reshape(-1, n, d)
+    results = np.stack(
+        [_logsig_single(flat_batch[i], s) for i in range(flat_batch.shape[0])]
+    )
+    return results.reshape(*batch_shape, logsiglength(s.d, s.m))
+
+
+def _logsig_single(
+    path: NDArray[np.float64],
+    s: PreparedData,
+) -> NDArray[np.float64]:
+    """Single (non-batched) logsig computation."""
     n = path.shape[0]
 
     if n < 2:
         return np.zeros(logsiglength(s.d, s.m))
 
-    # Step 1: compute signature as level-list
     levels = sig_levels(path, s.m)
-
-    # Step 2: tensor logarithm
     log_levels = tensor_log(levels)
 
-    # Step 3: project each level onto Lyndon basis
     projected: list[NDArray[np.float64]] = []
     for k in range(s.m):
         proj_matrix = s.projection_matrices[k]
@@ -130,13 +153,34 @@ def logsig_expanded(
     Output length equals ``siglength(d, m)``.
 
     Args:
-        path: Array of shape (n, d).
+        path: Array of shape (..., n, d). Extra leading dims are batched.
         s: Prepared data from ``prepare(d, m)``.
 
     Returns:
-        1D array of length ``siglength(d, m)``.
+        Array of shape (..., siglength(d, m)).
     """
     path = np.asarray(path, dtype=np.float64)
+
+    if path.ndim > 2:
+        batch_shape = path.shape[:-2]
+        n, d = path.shape[-2], path.shape[-1]
+        flat_batch = path.reshape(-1, n, d)
+        results = np.stack(
+            [
+                _logsig_expanded_single(flat_batch[i], s)
+                for i in range(flat_batch.shape[0])
+            ]
+        )
+        return results.reshape(*batch_shape, siglength(s.d, s.m))
+
+    return _logsig_expanded_single(path, s)
+
+
+def _logsig_expanded_single(
+    path: NDArray[np.float64],
+    s: PreparedData,
+) -> NDArray[np.float64]:
+    """Single (non-batched) logsig_expanded computation."""
     n = path.shape[0]
 
     if n < 2:
