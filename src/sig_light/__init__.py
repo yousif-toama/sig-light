@@ -37,7 +37,7 @@ from sig_light.transforms import (
     sigscalebackprop,
 )
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 __all__ = [
     "PreparedData",
