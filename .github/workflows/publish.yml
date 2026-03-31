@@ -28,10 +28,10 @@ jobs:
         run: uv build
 
       - name: Smoke test (wheel)
-        run: uv run --isolated --no-project --with dist/*.whl -c "import sig_light; print(sig_light.version())"
+        run: uv run --isolated --no-project --with dist/*.whl -- python -c "import sig_light; print(sig_light.version())"
 
       - name: Smoke test (sdist)
-        run: uv run --isolated --no-project --with dist/*.tar.gz -c "import sig_light; print(sig_light.version())"
+        run: uv run --isolated --no-project --with dist/*.tar.gz -- python -c "import sig_light; print(sig_light.version())"
 
       - name: Publish
         run: uv publish
